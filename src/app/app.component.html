@@ -1,43 +1,69 @@
-
 <body>
 
-<main class="main">
-  <div class="content">
-    <div class="left-side">
-      <img src="../assets/img/logo-dark.png" width="80%" alt="">
-
-      <h3 style="text-align: justify;">{{ title }}</h3>
-      <p>App de Facturación de comandas de líneas. 🎉</p>
-      <br>
-      <form [formGroup]="frmImpresion">
-        <div *ngIf="access" class="mb-3">
-          <input type="text" formControlName="Api" class="form-control" placeholder="Enter API value" />
-        </div>
-
-        <div class="d-flex justify-content-start gap-2">
-          <button type="button" (click)="Almacenar()" *ngIf="access"  class="btn btn-success">
-            Guardar
-          </button>
-          <button type="button" (click)="settings()" class="btn btn-success">
-            Configuración
-          </button>
-        </div>
-      </form>
+  <main class="main">
 
 
-    </div>
-    <div class="divider" role="separator" aria-label="Divider"></div>
-    <div class="right-side">
+    <div class="content">
+      <div class="left-side">
+        <img src="../assets/img/logo-dark.png" width="80%" alt="">
 
 
-      <div class="social-links">
-        <img src="./../assets/img/comanda_pos.png" alt="">
+        <h3 style="text-align: justify;">{{ title }}</h3>
+        <p>App de Facturación de comandas de líneas. 🎉</p>
+        <br>
+        <form [formGroup]="frmImpresion">
+          <div *ngIf="access" class="mb-3">
+            <div class="row">
+              <!-- API Input -->
+              <div class="col-6">
+                <label for="Api">Api de Petición</label>
+                <input type="text" formControlName="Api" class="form-control" placeholder="Enter API value" />
+              </div>
+
+              <!-- Printer Select -->
+              <div class="col-md-4 col-lg-4 mb-4">
+                <label for="Print">Impresoras Disponibles</label>
+                <ng-select [items]="listPrinters()"
+                           class="form-control"
+                           bindLabel="textoMostrar"
+                           bindValue="id"
+                           formControlName="Print">
+                </ng-select>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="d-flex justify-content-start gap-2">
+            <button type="button" (click)="Almacenar()" *ngIf="access" class="btn btn-success">
+              Guardar
+            </button>
+            <button type="button" (click)="deleteAllData()" class="btn btn-danger" *ngIf="existDataDb && access" >
+              <i class="fa-solid fa-trash"></i> Eliminar configuración anterior
+            </button>
+            <button type="button" *ngIf="!access"  (click)="settings()" class="btn btn-success">
+              Configuración
+            </button>
+          </div>
+        </form>
+
 
       </div>
+      <div class="divider" role="separator" aria-label="Divider"></div>
+      <div class="right-side">
+
+        <label class="switch">
+          <input class="ch" disabled  type="checkbox" [checked]="isChecked"/>
+          <span class="slider"></span>
+        </label>
+
+        <div class="social-links">
+          <img src="./../assets/img/comanda_pos.png" alt="">
+
+        </div>
+      </div>
     </div>
-  </div>
-</main>
+  </main>
 
 
 </body>
-

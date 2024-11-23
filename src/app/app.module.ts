@@ -6,6 +6,8 @@ import { RouterModule, Routes } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { HttpClientModule } from '@angular/common/http';
 import { ServiceWorkerModule } from '@angular/service-worker';
+import { NgSelectModule } from '@ng-select/ng-select';
+import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 
 const routes: Routes = [
   { path: '', component: AppComponent }
@@ -14,9 +16,10 @@ const routes: Routes = [
   declarations: [
     AppComponent
   ],
-  imports: [
+  imports: [FontAwesomeModule,
     BrowserModule,
     CommonModule,
+    NgSelectModule,
     FormsModule,
     ReactiveFormsModule,
     RouterModule.forRoot(routes),

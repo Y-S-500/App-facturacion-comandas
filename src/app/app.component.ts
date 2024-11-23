@@ -1,9 +1,11 @@
-import { Component } from '@angular/core';
+import { DataSelectDto } from './../generic/dataSelectDto';
+import { Component, signal } from '@angular/core';
 import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { IndexedDBService } from './services/indexed-db.service';
 import Swal from 'sweetalert2';
 import { GeneralParameterService } from '../generic/general.service';
 import * as pdfjsLib from 'pdfjs-dist';
+import {img}  from '../generic/dataProve' ;
 
 
 @Component({
@@ -14,13 +16,16 @@ import * as pdfjsLib from 'pdfjs-dist';
 })
 export class AppComponent {
   url = "";
-  public isPrinting = false;  // Flag to track if printing is in progress
-
-
-
+  isPrinting = false;
+  listPrinters =signal<DataSelectDto[]>([]);
   frmImpresion : FormGroup;
   password = "drago123"
   access  = false;
+  namePrint = "";
+  existDataDb = false;
+  dataStart = img;
+  isChecked: boolean = false;
+
 
 
   title = "Aplicación para la escucha e impresión de comandos de SIGEC: Una herramienta diseñada para recibir, procesar, y registrar comandos del sistema SIGEC, permitiendo su impresión eficiente y seguimiento en tiempo real.";
@@ -32,6 +37,7 @@ export class AppComponent {
 
     this.frmImpresion = new FormGroup({
       Api: new FormControl("", [Validators.required]),
+      Print:new FormControl("", [Validators.required]),
     });
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';  // CDN version
@@ -39,8 +45,19 @@ export class AppComponent {
   }
 
   async ngOnInit(): Promise<void> {
+    this.listPrints();
+
     const api = await this.db();
-    this.service.url = api.api;
+    if (api.length > 0) {
+      this.existDataDb = true;
+      this.service.url = api[0].api;
+      this.namePrint = api[0].print;
+      this.frmImpresion.get('Api')?.setValue(api[0].api);
+      this.frmImpresion.get('Print')?.setValue(api[0].print);
+    }
+    this.printCommand(this.dataStart[0],true);
+
+
     if (api) {
       setInterval(() => {
         if (!this.isPrinting) {
@@ -50,27 +67,34 @@ export class AppComponent {
     }
   }
 
+
+
   async db(): Promise<any> {
     try {
       const data = await this.indexedDBService.getData();  // Usamos await para esperar los datos
       if (data.length > 0) {
-        this.url =data[0];
-        return data[0];  // Retorna el primer item
+        return data;
       } else {
-        return null;  // Retornamos null si no hay datos
+        return null;
       }
     } catch (error) {
       return null;  // También retornamos null si ocurre un error
     }
   }
 
-
   //alamcenar valor de la api
-  Almacenar() {
+  Almacenar(): void {
     const apiValue = this.frmImpresion.get('Api')?.value;
-    this.indexedDBService.storeData({ api: apiValue });
-    this.access = false;
-    this.frmImpresion.reset();
+    const printValue = this.frmImpresion.get('Print')?.value;
+
+    if (apiValue && printValue) {
+      this.indexedDBService.deleteAllData();
+      this.indexedDBService.storeData({ api: apiValue, print: printValue });
+      this.access = false;
+      this.frmImpresion.reset();
+    } else {
+      Swal.fire('Campos Vacíos', 'Por favor complete todos los campos.', 'warning');
+    }
   }
 
   settings(): void {
@@ -99,11 +123,17 @@ export class AppComponent {
     });
   }
 
+  async deleteAllData(){
+    this.indexedDBService.deleteAllData();
+      this.frmImpresion.get('Api')?.setValue("");
+      this.frmImpresion.get('Print')?.setValue("");
+      this.existDataDb = false;
+  }
+
   async startPolling(): Promise<void> {
 
-
     if (this.isPrinting) {
-      return;  // Do not make the request if printing is in progress
+      return;
     }
 
 
@@ -119,7 +149,7 @@ export class AppComponent {
             if (item.content) {
               try {
                 // Espera a que se complete la impresión antes de continuar con la siguiente
-                await this.printCommand(item.content, item);
+                await this.printCommand(item.content,false, item);
               } catch (error) {
               }
             }
@@ -135,33 +165,36 @@ export class AppComponent {
     );
   }
 
-
-
-  async printCommand(content: string, data: any): Promise<void> {
+  async printCommand(content: string, pdfOrImg: boolean, data?: any): Promise<void> {
     return new Promise<void>(async (resolve, reject) => {
       // Verificar si el navegador soporta impresión directa
       if (!window.print) {
         reject("Impresión no soportada");
+        this.isChecked = false;
+        Swal.fire('Empresa Desconectada', 'Por favor, verifique si la empresa está conectada correctamente.', 'warning');
         return;
       }
 
       try {
-        // Convierte el PDF a imagen en base64
-        const imgAbase64 = await this.convertPdfToImage(content);
+        var imgAbase64: any;
+
+        if(!pdfOrImg){
+          imgAbase64 = await this.convertPdfToImage(content);
+        }else{
+          imgAbase64 = content;
+        }
 
         const cargaUtil = {
           serial: "",
-          nombreImpresora: "SAT15TUS",
+          nombreImpresora: `${this.namePrint}`,
           operaciones: [
-            {
-              nombre: "ImprimirImagenEnBase64",
-              argumentos: [
-                imgAbase64[0], // Primera imagen en base64
-                350, // Ancho de la imagen
-                0,   // Posición X
-                false // Indicador de impresión
-              ]
-            }
+              {
+                nombre: "ImprimirImagenEnBase64",
+                argumentos: pdfOrImg
+                  ? [imgAbase64, 350, 0, false]
+                  : [imgAbase64[0], 350, 0, false]
+              }
+
           ]
         };
 
@@ -175,10 +208,42 @@ export class AppComponent {
         const respuesta = await respuestaHttp.json();
         if (respuestaHttp.ok) {
           // Al completar la impresión, actualizar la comanda
-          await this.updateComanda(data);
+          if(!pdfOrImg){
+            await this.updateComanda(data);
+          }else{
+            this.isChecked = true;
+          }
           resolve(); // Resolucion de la promesa
         } else {
+          this.isChecked = false;
           reject("Error en el plugin de impresión");
+        }
+      } catch (e) {
+        this.isChecked = false;
+        console.error("Error en la operación de impresión:", e);
+        reject("Error en la operación de impresión");
+      }
+    });
+  }
+
+  listPrints() {
+    return new Promise<void>(async (resolve, reject) => {
+      try {
+        const respuestaHttp = await fetch("http://localhost:8000/impresoras", {
+          method: "GET",
+        });
+        if (!respuestaHttp.ok) {
+          reject("Error al obtener la lista de impresoras");
+          return;
+        }
+        const respuesta = await respuestaHttp.json();
+        if (respuesta != null) {
+          this.listPrinters.set(respuesta);
+          this.isChecked = true;
+          resolve();
+        } else {
+          this.isChecked = false;
+          reject("No hay impresoras disponibles en el plugin de impresión");
         }
       } catch (e) {
         console.error("Error en la operación de impresión:", e);
@@ -195,24 +260,44 @@ export class AppComponent {
 
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 5.0 }); // Ajusta la escala según sea necesario
 
+      // Escalar para calidad
+      const viewport = page.getViewport({ scale: 5.0 });
+
+      // Crear un lienzo para renderizar
+      const tempCanvas = document.createElement('canvas');
+      const tempContext = tempCanvas.getContext('2d');
+
+      if (!tempContext) {
+        console.error('No se pudo obtener el contexto 2D para el lienzo temporal.');
+        continue;
+      }
+
+      tempCanvas.width = viewport.width;
+      tempCanvas.height = viewport.height;
+
+      await page.render({ canvasContext: tempContext, viewport: viewport }).promise;
+
+      // Determinar la altura real del contenido
+      const imageData = tempContext.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const trimmedHeight = this.calculateContentHeight(imageData);
+
+      // Crear el lienzo final con la altura ajustada
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
-      if (!context) continue;
 
-      // Ajustar el ancho y la altura del lienzo
+      if (!context) {
+        console.error('No se pudo obtener el contexto 2D para el lienzo final.');
+        continue;
+      }
+
       canvas.width = viewport.width;
-      canvas.height = viewport.height * 0.2; // Reducir la altura al 50%
+      canvas.height = trimmedHeight;
 
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-      };
+      // Renderizar la página ajustada en el lienzo final
+      await page.render({ canvasContext: context, viewport: viewport }).promise;
 
-      // Renderizar la página completa en el lienzo
-      await page.render(renderContext).promise;
-
+      // Convertir el lienzo a Base64
       const imgBase64 = canvas.toDataURL('image/png');
       imagesBase64.push(imgBase64);
     }
@@ -220,7 +305,24 @@ export class AppComponent {
     return imagesBase64;
   }
 
+  // Función auxiliar para calcular la altura del contenido real
+  private calculateContentHeight(imageData: ImageData): number {
+    const { data, height, width } = imageData;
+    let contentHeight = 0;
 
+    for (let y = height - 1; y >= 0; y--) {
+      for (let x = 0; x < width; x++) {
+        const index = (y * width + x) * 4; // Cada píxel tiene 4 valores RGBA
+        if (data[index] !== 255 || data[index + 1] !== 255 || data[index + 2] !== 255) {
+          contentHeight = y + 1; // Guardar la posición donde termina el contenido
+          break;
+        }
+      }
+      if (contentHeight > 0) break;
+    }
+
+    return contentHeight;
+  }
 
   private base64ToUint8Array(base64: string): Uint8Array {
     const raw = atob(base64);
