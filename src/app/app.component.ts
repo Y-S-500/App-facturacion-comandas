@@ -149,7 +149,7 @@ export class AppComponent {
             if (item.content) {
               try {
                 // Espera a que se complete la impresión antes de continuar con la siguiente
-                await this.printCommand(item.content,false, item);
+                await this.printCommand(item.content,false, response.data);
               } catch (error) {
               }
             }
@@ -165,6 +165,7 @@ export class AppComponent {
     );
   }
 
+
   async printCommand(content: string, pdfOrImg: boolean, data?: any): Promise<void> {
     return new Promise<void>(async (resolve, reject) => {
       // Verificar si el navegador soporta impresión directa
@@ -176,48 +177,64 @@ export class AppComponent {
       }
 
       try {
-        var imgAbase64: any;
+        let imgAbase64: any;
 
-        if(!pdfOrImg){
+        if (!pdfOrImg) {
           imgAbase64 = await this.convertPdfToImage(content);
-        }else{
+        } else {
           imgAbase64 = content;
         }
 
         const cargaUtil = {
           serial: "",
-          nombreImpresora: `${this.namePrint}`,
+          nombreImpresora: "",
           operaciones: [
-              {
-                nombre: "ImprimirImagenEnBase64",
-                argumentos: pdfOrImg
-                  ? [imgAbase64, 350, 0, false]
-                  : [imgAbase64[0], 350, 0, false]
-              }
-
-          ]
+            {
+              nombre: "ImprimirImagenEnBase64",
+              argumentos: pdfOrImg
+                ? [imgAbase64, 350, 0, false]
+                : [imgAbase64[0], 350, 0, false],
+            },
+          ],
         };
 
-        // Enviar solicitud HTTP para imprimir
-        const respuestaHttp = await fetch("http://localhost:8000/imprimir", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(cargaUtil),
-        });
+        // Extraer y limpiar los nombres de impresoras
+        const impresoras: string[] = Array.isArray(data)
+          ? data.flatMap((item: any) =>
+              item.impresoras?.split(",").map((i: string) => i.trim()) || [])
+          : [];
 
-        const respuesta = await respuestaHttp.json();
-        if (respuestaHttp.ok) {
-          // Al completar la impresión, actualizar la comanda
-          if(!pdfOrImg){
-            await this.updateComanda(data);
-          }else{
-            this.isChecked = true;
-          }
-          resolve(); // Resolucion de la promesa
-        } else {
-          this.isChecked = false;
-          reject("Error en el plugin de impresión");
+        if (impresoras.length === 0) {
+          reject("No se encontraron impresoras válidas en los datos proporcionados.");
+          return;
         }
+
+        // Realizar múltiples peticiones con diferentes nombres de impresoras
+        for (const impresora of impresoras) {
+          cargaUtil.nombreImpresora = impresora; // Asignar el nombre de la impresora
+
+          const respuestaHttp = await fetch("http://localhost:8000/imprimir", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cargaUtil),
+          });
+
+          const respuesta = await respuestaHttp.json();
+          if (respuestaHttp.ok) {
+            // Actualizar comanda o manejar éxito
+            if (!pdfOrImg) {
+              await this.updateComanda(data);
+            } else {
+              this.isChecked = true;
+            }
+          } else {
+            this.isChecked = false;
+            reject(`Error al imprimir con la impresora ${impresora}`);
+            return; // Salir si hay un error
+          }
+        }
+
+        resolve(); // Resolución de la promesa si todas las impresiones son exitosas
       } catch (e) {
         this.isChecked = false;
         console.error("Error en la operación de impresión:", e);
@@ -334,12 +351,16 @@ export class AppComponent {
   }
 
   updateComanda(datas: any) {
-    // Modificar el valor de 'impreso' dentro del objeto 'datas'
+
+    const comandaData = datas[0];
+
     const updatedData = {
-      ...datas,          // Mantener el resto de las propiedades de 'datas'
-      impreso: true      // Actualizar la propiedad 'impreso' a 'true'
+      ...comandaData,
+      impresoras: "",
+      impreso: true
     };
 
+    // Llamar al servicio para guardar los cambios
     this.service.save("Archivo", updatedData.id, updatedData).subscribe(
       (response) => {
       },
@@ -348,6 +369,7 @@ export class AppComponent {
       }
     );
   }
+
 
 
 }
